@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nada Jatuh 4K</title>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0a18;--ink:#f3eefb;--dim:#9d93b8;--a:#ff6b8b;--b:#5ee1c4;--gold:#ffd166;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:Figtree,system-ui,sans-serif}
+body{display:flex;align-items:center;justify-content:center;overflow:hidden}
+#w{position:relative;height:100%;max-height:960px;aspect-ratio:2/3;max-width:100vw}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(14,10,24,.9);text-align:center;padding:24px}
+.hide{display:none!important}
+h1{font:800 clamp(28px,7vw,40px)/1.05 Unbounded,system-ui,sans-serif;margin:0}
+p{margin:0;color:var(--dim);max-width:34ch;line-height:1.5}
+.row{display:flex;gap:8px}
+button{font:600 16px Figtree,system-ui,sans-serif;color:var(--ink);background:#241a3a;border:2px solid #3a2d59;border-radius:10px;padding:10px 18px;cursor:pointer}
+button.on{border-color:var(--b);color:var(--b)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#go{background:var(--a);border-color:var(--a);color:#1b0a12;font-size:18px;padding:12px 36px}
+label{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--dim)}
+input[type=range]{width:220px;accent-color:var(--b)}
+#rank{font:800 88px/1 Unbounded,system-ui,sans-serif;color:var(--gold)}
+#stats{display:grid;grid-template-columns:auto auto;gap:4px 24px;text-align:left;font-size:16px}
+#stats span:nth-child(even){text-align:right;font-weight:600}
+</style></head><body>
+<div id="w"><canvas id="c" width="480" height="720"></canvas>
+<div id="menu" class="ov">
+<h1>Nada Jatuh</h1>
+<p>Game ritme 4 jalur ala osu!mania. Tekan nada tepat saat menyentuh garis.</p>
+<div class="row" id="df"><button data-d="0">Mudah</button><button data-d="1" class="on">Normal</button><button data-d="2">Sulit</button></div>
+<div class="row" id="sg"><button data-s="0" class="on">Orisinal</button><button data-s="1">Galaxy Collapse (sintesis)</button><button data-s="2">File sendiri</button></div>
+<div id="fp" class="row hide" style="flex-wrap:wrap;justify-content:center;align-items:center"><input id="uf" type="file" accept="audio/*"><span id="fn" style="font-size:13px;color:var(--dim)">Pilih file audio</span><label>BPM<input id="ub" type="number" value="120" min="60" max="300" style="width:70px"></label><label>Offset (ms)<input id="uo" type="number" value="0" style="width:70px"></label></div>
+<label>Kecepatan jatuh<input id="sp" type="range" min="350" max="900" value="560"></label>
+<button id="go">Mulai</button>
+<p>Tombol D F J K, atau sentuh jalurnya di layar. Tahan nada panjang sampai habis. Esc untuk keluar.</p>
+</div>
+<div id="res" class="ov hide">
+<p id="rt">Selesai</p><div id="rank">A</div><div id="stats"></div>
+<button id="again">Main lagi</button>
+</div></div>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d'),W=480,H=720,LW=84,PX=(W-LW*4)/2,HY=H-120;
+const COL=['#ff6b8b','#5ee1c4','#5ee1c4','#ff6b8b'],KEYS=['d','f','j','k'];
+const J=[{n:'Perfect',c:'#ffd166',w:1},{n:'Great',c:'#5ee1c4',w:.7},{n:'Good',c:'#8ab4ff',w:.35},{n:'Miss',c:'#ff5470',w:0}];
+let A,M,T0,SP,notes,ns,tot,diff=1,spd=560,on=0,down=[0,0,0,0],glow=[0,0,0,0],pop=null,
+cnt,sc,judged,combo,maxc,hp,total,nz;
+function rng(s){return()=>(s=(s*16807)%2147483647)/2147483647}
+function gen(d){
+ const r=rng(11+d),bpm=song==1?190:song==2?ubpm:[116,128,140][d];SP=60/bpm/4;const bars=song==2?Math.floor((fbuf.duration-uoff-2)/(SP*16)):[36,40,44][d],den=[.32,.48,.62][d]*(song==1?.8:1),busy=[0,0,0,0];
+ let last=-1;const out=[];
+ for(let s=16;s<bars*16;s++){
+  if(d==0&&s%2)continue;
+  const t=s*SP+(song==2?uoff:0);let p=den*(s%4==0?1.5:s%2==0?1:.55);
+  if(((s>>4)%8)==7)p*=.25;
+  if(r()<p){
+   const free=[0,1,2,3].filter(l=>busy[l]<=t+.001);if(!free.length)continue;
+   const c=free.filter(l=>l!=last),l=(c.length?c:free)[Math.floor(r()*(c.length||free.length))];
+   const hold=d>0&&r()<.14&&s%4==0,len=hold?(r()<.5?4:8)*SP:0;
+   out.push({t,l,e:len?t+len:0,s:0});busy[l]=t+len+SP;last=l;
+   if(d>0&&s%16==0&&r()<.3){const f2=free.filter(x=>x!=l&&busy[x]<=t+.001);if(f2.length){const l2=f2[Math.floor(r()*f2.length)];out.push({t,l:l2,e:0,s:0});busy[l2]=t+SP}}
+  }
+ }
+ return out.sort((a,b)=>a.t-b.t);
+}
+function tone(t,f,d,ty,g){const o=A.createOscillator(),v=A.createGain();o.type=ty;o.frequency.value=f;v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(v);v.connect(M);o.start(t);o.stop(t+d+.02)}
+function noise(t,d,f,type,g){const s=A.createBufferSource(),fl=A.createBiquadFilter(),v=A.createGain();s.buffer=nz;fl.type=type;fl.frequency.value=f;v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(fl);fl.connect(v);v.connect(M);s.start(t);s.stop(t+d)}
+function kick(t){const o=A.createOscillator(),v=A.createGain();o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+.12);v.gain.setValueAtTime(.55,t);v.gain.exponentialRampToValueAtTime(.001,t+.22);o.connect(v);v.connect(M);o.start(t);o.stop(t+.25)}
+function music(s,t){
+ const b=s%16,bar=s>>4,root=(song==1?[73.42,58.27,87.31,65.41]:[110,87.31,130.81,98])[bar%4],iv=bar%4==0?[1,1.189,1.498]:[1,1.26,1.498];
+ if(song==2)return;if(s%4==0)kick(t);if(s%2==1)noise(t,.04,7000,'highpass',.07);if(b==4||b==12)noise(t,.12,1800,'bandpass',.22);
+ if(b==0||b==6||b==10)tone(t,root,.28,'square',.07);
+ if(s%2==0)tone(t,root*4*iv[(s>>1)%3],.2,'triangle',.05);
+ if(song==1){tone(t,root*8*iv[s%3],.09,'sawtooth',.03);if(s%2==0)noise(t,.03,9000,'highpass',.05)}
+}
+function sched(){while(ns<tot&&T0+ns*SP<A.currentTime+.3){music(ns,T0+ns*SP);ns++}}
+function reg(j){
+ cnt[j]++;judged++;sc+=J[j].w;
+ if(j==3){combo=0;hp-=9}else{combo++;maxc=Math.max(maxc,combo);hp=Math.min(100,hp+(j==0?1:j==1?.4:-2))}
+ pop={j,t:performance.now()};
+}
+function press(l){
+ if(!on)return;down[l]=1;glow[l]=1;const now=A.currentTime-T0;
+ for(const n of notes){if(n.l!=l||n.s)continue;const dt=n.t-now;if(dt>.14)break;if(dt<-.14)continue;
+  const a=Math.abs(dt),j=a<=.05?0:a<=.095?1:2;reg(j);tone(A.currentTime,[440,523.25,659.25,783.99][l],.25,'triangle',.18);
+  n.s=n.e?1:2;return}
+}
+function rel(l){
+ if(!on)return;down[l]=0;const now=A.currentTime-T0;
+ for(const n of notes){if(n.l==l&&n.s==1){if(now<n.e-.12){n.s=2;combo=0;hp-=5;pop={j:3,t:performance.now()}}else n.s=2}}
+}
+function update(now){
+ for(const n of notes){
+  if(n.s==0&&now-n.t>.14){n.s=2;reg(3)}
+  else if(n.s==1&&now>=n.e)n.s=2;
+ }
+ glow=glow.map(g=>Math.max(0,g-.06));
+ if(hp<=0)return end(1);
+ const lst=notes[notes.length-1];if(now>(lst.e||lst.t)+1.5)end(0);
+}
+function rr(x,y,w,h,r){X.beginPath();X.roundRect(x,y,w,h,r);X.fill()}
+function draw(now){
+ const g=X.createLinearGradient(0,0,0,H);g.addColorStop(0,'#1b1430');g.addColorStop(1,'#0e0a18');X.fillStyle=g;X.fillRect(0,0,W,H);
+ const beat=((now/(SP*4))%1+1)%1;
+ X.fillStyle='rgba(255,255,255,'+(.03+.03*(1-beat))+')';X.fillRect(PX,0,LW*4,H);
+ X.strokeStyle='rgba(255,255,255,.08)';X.lineWidth=1;
+ for(let i=0;i<=4;i++){X.beginPath();X.moveTo(PX+i*LW,0);X.lineTo(PX+i*LW,H);X.stroke()}
+ for(let l=0;l<4;l++)if(glow[l]>0||down[l]){const gg=X.createLinearGradient(0,HY-260,0,HY);gg.addColorStop(0,'transparent');gg.addColorStop(1,COL[l]+'66');X.fillStyle=gg;X.fillRect(PX+l*LW,HY-260,LW,260)}
+ for(const n of notes){
+  if(n.s==2)continue;
+  const y=n.s==1?HY:HY-(n.t-now)*spd,x=PX+n.l*LW+5;
+  if(n.e){const ye=HY-(n.e-now)*spd;if(ye>H||y<-40)continue;X.fillStyle=COL[n.l]+(n.s?'cc':'77');rr(x+13,ye,LW-36,Math.max(0,y-ye),6)}
+  else if(y<-40||y>H+40)continue;
+  X.fillStyle=COL[n.l];rr(x,y-11,LW-10,24,7);X.fillStyle='rgba(255,255,255,.35)';rr(x+4,y-8,LW-18,5,3);
+ }
+ X.fillStyle='#0e0a18';X.fillRect(0,HY+14,W,H);
+ for(let l=0;l<4;l++){const x=PX+l*LW+5,on_=down[l];X.fillStyle=on_?COL[l]:'#241a3a';rr(x,HY-11,LW-10,24,7);
+  X.fillStyle=on_?'#1b0a12':'#9d93b8';X.font='600 15px Figtree,sans-serif';X.textAlign='center';X.fillText(KEYS[l].toUpperCase(),PX+l*LW+LW/2,HY+48)}
+ X.fillStyle='#ffd16688';X.fillRect(PX,HY+13,LW*4,2);
+ X.fillStyle='#f3eefb';X.textAlign='center';X.font='800 30px Unbounded,sans-serif';X.fillText(String(Math.round(1e6*sc/total)).padStart(7,'0'),W/2,44);
+ X.fillStyle='#9d93b8';X.font='600 14px Figtree,sans-serif';X.fillText((judged?100*sc/judged:100).toFixed(2)+'%',W/2,66);
+ const prog=Math.min(1,Math.max(0,now/(notes[notes.length-1].t)));X.fillStyle=COL[1];X.fillRect(PX,0,LW*4*prog,3);
+ X.fillStyle='#241a3a';rr(28,110,10,HY-110,5);X.fillStyle=hp>35?COL[1]:'#ff5470';const hh=(HY-110)*Math.max(0,hp)/100;rr(28,HY-hh,10,hh,5);
+ if(combo>1){X.fillStyle='rgba(243,238,251,.9)';X.font='800 52px Unbounded,sans-serif';X.fillText(combo,W/2,250);X.fillStyle='#9d93b8';X.font='600 13px Figtree,sans-serif';X.fillText('combo',W/2,272)}
+ if(pop){const a=performance.now()-pop.t;if(a<500){X.globalAlpha=1-a/500;X.fillStyle=J[pop.j].c;X.font='800 '+(24+8*Math.max(0,1-a/120))+'px Unbounded,sans-serif';X.fillText(J[pop.j].n,W/2,HY-120);X.globalAlpha=1}}
+ if(now<0){X.fillStyle='#f3eefb';X.font='800 40px Unbounded,sans-serif';X.fillText(Math.ceil(-now),W/2,H/2)}
+}
+function drawC(now){
+ const cx=W/2,cy=H/2,R=100,AN=[225,135,45,315].map(d=>d*Math.PI/180),k=spd*.5,P=(l,r)=>[cx+Math.cos(AN[l])*r,cy+Math.sin(AN[l])*r];
+ const g=X.createRadialGradient(cx,cy,20,cx,cy,450);g.addColorStop(0,'#2a1c4a');g.addColorStop(1,'#0a0714');X.fillStyle=g;X.fillRect(0,0,W,H);
+ const beat=((now/(SP*4))%1+1)%1;X.lineCap='round';
+ X.lineWidth=1;X.strokeStyle='rgba(255,255,255,.07)';
+ for(let r=R+80;r<330;r+=80){X.beginPath();X.arc(cx,cy,r,0,7);X.stroke()}
+ for(let l=0;l<4;l++){const a=P(l,R),b=P(l,340);X.beginPath();X.moveTo(a[0],a[1]);X.lineTo(b[0],b[1]);X.strokeStyle=COL[l]+'33';X.lineWidth=2;X.stroke()}
+ X.beginPath();X.arc(cx,cy,R+beat*30,0,7);X.strokeStyle='rgba(255,209,102,'+(.3*(1-beat))+')';X.lineWidth=2;X.stroke();
+ X.fillStyle='#0e0a18';X.beginPath();X.arc(cx,cy,R-2,0,7);X.fill();
+ for(let l=0;l<4;l++){const d=down[l]||glow[l]>0;X.beginPath();X.arc(cx,cy,R,AN[l]-.7,AN[l]+.7);X.strokeStyle=d?COL[l]:COL[l]+'44';X.lineWidth=d?11:6;X.stroke();
+  const q=P(l,R-30);X.fillStyle=d?COL[l]:'#9d93b8';X.font='600 15px Figtree,sans-serif';X.textAlign='center';X.fillText(KEYS[l].toUpperCase(),q[0],q[1]+5)}
+ for(const n of notes){if(n.s==2)continue;const r=n.s==1?R:R+(n.t-now)*k;if(r>350)continue;
+  if(n.e){const a=P(n.l,Math.max(R,r)),b=P(n.l,Math.min(350,R+(n.e-now)*k));X.strokeStyle=COL[n.l]+(n.s?'cc':'77');X.lineWidth=18;X.beginPath();X.moveTo(a[0],a[1]);X.lineTo(b[0],b[1]);X.stroke()}
+  const p=P(n.l,r);X.fillStyle=COL[n.l];X.beginPath();X.arc(p[0],p[1],17,0,7);X.fill();X.fillStyle='rgba(255,255,255,.4)';X.beginPath();X.arc(p[0]-4,p[1]-4,6,0,7);X.fill()}
+ X.lineWidth=6;X.strokeStyle='#241a3a';X.beginPath();X.arc(cx,cy,312,0,7);X.stroke();
+ X.strokeStyle=hp>35?COL[1]:'#ff5470';X.beginPath();X.arc(cx,cy,312,-Math.PI/2,-Math.PI/2+Math.max(0,hp)/100*Math.PI*2);X.stroke();
+ X.lineWidth=2;X.strokeStyle=COL[0];X.beginPath();X.arc(cx,cy,302,-Math.PI/2,-Math.PI/2+Math.min(1,Math.max(0,now/notes[notes.length-1].t))*Math.PI*2);X.stroke();
+ X.textAlign='center';X.fillStyle='#f3eefb';X.font='800 26px Unbounded,sans-serif';X.fillText(String(Math.round(1e6*sc/total)).padStart(7,'0'),cx,44);
+ X.fillStyle='#9d93b8';X.font='600 14px Figtree,sans-serif';X.fillText((judged?100*sc/judged:100).toFixed(2)+'%',cx,66);
+ if(combo>1){X.fillStyle='#f3eefb';X.font='800 40px Unbounded,sans-serif';X.fillText(combo,cx,cy+14);X.fillStyle='#9d93b8';X.font='600 12px Figtree,sans-serif';X.fillText('combo',cx,cy+34)}
+ if(pop){const a=performance.now()-pop.t;if(a<500){X.globalAlpha=1-a/500;X.fillStyle=J[pop.j].c;X.font='800 '+(16+6*Math.max(0,1-a/120))+'px Unbounded,sans-serif';X.fillText(J[pop.j].n,cx,cy-36);X.globalAlpha=1}}
+ if(now<0){X.fillStyle='#f3eefb';X.font='800 44px Unbounded,sans-serif';X.fillText(Math.ceil(-now),cx,cy+14)}
+}
+function frame(){if(!on)return;const now=A.currentTime-T0;sched();update(now);if(on)draw(now);requestAnimationFrame(frame)}
+async function start(){
+ if(A)A.close();A=new AudioContext();M=A.createGain();M.gain.value=.7;M.connect(A.destination);
+ nz=A.createBuffer(1,A.sampleRate*.2,A.sampleRate);const d=nz.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+ if(song==2){if(!fraw){fn.textContent='Pilih file audio dulu';return}ubpm=+ub.value||120;uoff=(+uo.value||0)/1000;try{fbuf=await A.decodeAudioData(fraw.slice(0))}catch(e){fn.textContent='File tidak bisa dibaca';return}}
+ notes=gen(diff);total=notes.length;tot=(Math.ceil(notes[notes.length-1].t/SP)+40);ns=0;
+ cnt=[0,0,0,0];sc=0;judged=0;combo=0;maxc=0;hp=100;pop=null;down=[0,0,0,0];
+ T0=A.currentTime+2.2;on=1;if(song==2){const b=A.createBufferSource();b.buffer=fbuf;b.connect(M);b.start(T0)}menu.classList.add('hide');res.classList.add('hide');requestAnimationFrame(frame);
+}
+function end(fail){
+ on=0;const acc=judged?100*sc/judged:0,rk=fail?'F':acc>=95?'S':acc>=90?'A':acc>=80?'B':acc>=70?'C':'D';
+ rank.textContent=rk;rt.textContent=fail?'Gagal: nyawa habis':(cnt[3]==0?'Full combo!':'Selesai');
+ stats.innerHTML=[['Skor',Math.round(1e6*sc/total).toLocaleString('id-ID')],['Akurasi',acc.toFixed(2)+'%'],['Combo maks',maxc],...J.map((j,i)=>[j.n,cnt[i]])].map(r=>'<span>'+r[0]+'</span><span>'+r[1]+'</span>').join('');
+ res.classList.remove('hide');setTimeout(()=>A.suspend(),1200);
+}
+function quit(){on=0;if(A)A.close();res.classList.add('hide');menu.classList.remove('hide')}
+const menu=document.getElementById('menu'),res=document.getElementById('res'),rank=document.getElementById('rank'),rt=document.getElementById('rt'),stats=document.getElementById('stats');
+document.getElementById('go').onclick=start;document.getElementById('again').onclick=start;
+document.getElementById('sp').oninput=e=>spd=+e.target.value;
+document.querySelectorAll('#df button').forEach(b=>b.onclick=()=>{diff=+b.dataset.d;document.querySelectorAll('#df button').forEach(x=>x.classList.toggle('on',x==b))});
+addEventListener('keydown',e=>{if(e.key=='Escape')return quit();if(e.repeat)return;const l=KEYS.indexOf(e.key.toLowerCase());if(l>=0)press(l)});
+addEventListener('keyup',e=>{const l=KEYS.indexOf(e.key.toLowerCase());if(l>=0)rel(l)});
+let song=0,fraw,fbuf,ubpm=120,uoff=0;
+document.querySelectorAll('#sg button').forEach(b=>b.onclick=()=>{song=+b.dataset.s;document.querySelectorAll('#sg button').forEach(x=>x.classList.toggle('on',x==b));fp.classList.toggle('hide',song!=2)});
+document.getElementById('uf').onchange=async e=>{const f=e.target.files[0];if(f){fraw=await f.arrayBuffer();fn.textContent=f.name}};
+const ptr={};
+function lane(e){const r=C.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*W;return Math.floor((x-PX)/LW)}
+C.addEventListener('pointerdown',e=>{const l=lane(e);if(l>=0&&l<4){ptr[e.pointerId]=l;press(l)}});
+['pointerup','pointercancel'].forEach(t=>C.addEventListener(t,e=>{if(e.pointerId in ptr){rel(ptr[e.pointerId]);delete ptr[e.pointerId]}}));
+</script></body></html>
